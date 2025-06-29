@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, url_for, request
+from flask import Flask, render_template, redirect, url_for
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -8,27 +8,26 @@ from wtforms import StringField, SubmitField
 from wtforms.validators import DataRequired
 import requests
 
+MOVIE_DB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjODlhMmYwNDhiZGNiZWM1NDUzM2Q4ZGQ3NjBlNTE4NiIsIm5iZiI6MTc1MTE5ODQ4OC4wMzcsInN1YiI6IjY4NjEyYjE4NWZjYTg0N2IzMDkxNWE1YSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.o2qbOQ5HW2YfQRpcJbyZuP34249YzmbrsYuJrft5_oI"
+MOVIE_DB_API_KEY = "c89a2f048bdcbec54533d8dd760e5186"
+
+headers = {
+    "Authorization": f"Bearer {ACCESS_TOKEN}",
+    "accept": "application/json"
+}
 
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
 Bootstrap5(app)
 
-# CREATE DB
 class Base(DeclarativeBase):
   pass
 
 db = SQLAlchemy(model_class=Base)
-# create the app
-# configure the SQLite database, relative to the app instance folder
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///movies.db"
-# initialize the app with the extension
 db.init_app(app)
-
-
-# CREATE TABLE
-from sqlalchemy import Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
 
 class Movie(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -44,43 +43,18 @@ class Movie(db.Model):
 with app.app_context():
     db.create_all()
 
-    # Create record
-    # new_movie = Movie(
-    # title="Phone Booth",
-    # year=2002,
-    # description="Publicist Stuart Shepard finds himself trapped in a phone booth, pinned down by an extortionist's sniper rifle. Unable to leave or receive outside help, Stuart's negotiation with the caller leads to a jaw-dropping climax.",
-    # rating=7.3,
-    # ranking=10,
-    # review="My favourite character was the caller.",
-    # img_url="https://image.tmdb.org/t/p/w500/tjrX2oWRCM3Tvarz38zlZM7Uc10.jpg"
-    # )
-    # db.session.add(new_movie)
-    # db.session.commit()
-
-#     second_movie = Movie(
-#     title="Avatar The Way of Water",
-#     year=2022,
-#     description="Set more than a decade after the events of the first film, learn the story of the Sully family (Jake, Neytiri, and their kids), the trouble that follows them, the lengths they go to keep each other safe, the battles they fight to stay alive, and the tragedies they endure.",
-#     rating=7.3,
-#     ranking=9,
-#     review="I liked the water.",
-#     img_url="https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg"
-# )
-#     db.session.add(second_movie)
-#     db.session.commit()
-
 class EditMovieForm(FlaskForm):
-    rating = StringField('Rating', validators=[DataRequired()])
-    review = StringField('Review', validators=[DataRequired()])
-    submit = SubmitField('Update')
+    rating = StringField('Your Rating Out of 10', validators=[DataRequired()])
+    review = StringField('Your Review', validators=[DataRequired()])
+    submit = SubmitField('Done')
 
 class AddMovieForm(FlaskForm):
-    title = StringField('Title', validators=[DataRequired()])
-    submit = SubmitField('Add Movie')
+    title = StringField('Movie Title', validators=[DataRequired()])
+    submit = SubmitField('Search')
 
 @app.route("/")
 def home():
-    all_movies = db.session.execute(db.select(Movie)).scalars().all()
+    all_movies = db.session.execute(db.select(Movie)).scalars()
     return render_template("index.html", movies=all_movies)
 
 @app.route("/update/<int:id>", methods=["GET", "POST"])
@@ -111,11 +85,54 @@ def add():
     form = AddMovieForm()
     if form.validate_on_submit():
         title = form.title.data
-        print(f"Title: {title}")
-        # Fetch movie details from TMDB API
-        db.session.commit()
-        return redirect(url_for("home"))
+        try:
+            response = requests.get(
+                MOVIE_DB_SEARCH_URL,
+                params={"query": title},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json().get("results", [])
+            return render_template("select.html", options=data)
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching data: {e}")
+            return render_template("add.html", form=form, error="Failed to fetch movies. Please try again.")
+    
     return render_template("add.html", form=form)
+
+@app.route("/add_movie/<int:movie_id>")
+def add_movie(movie_id):
+    # Fetch complete movie details from TMDB API
+    MOVIE_DB_INFO_URL = f"https://api.themoviedb.org/3/movie/{movie_id}"
+    
+    try:
+        response = requests.get(MOVIE_DB_INFO_URL, headers=headers)
+        response.raise_for_status()
+        movie_data = response.json()
+        
+        # Create new movie entry
+        new_movie = Movie(
+            title=movie_data["title"],
+            year=int(movie_data["release_date"][:4]) if movie_data.get("release_date") else None,
+            description=movie_data["overview"],
+            rating=float(movie_data["vote_average"]),
+            ranking=1,
+            review="Your Review Here",
+            img_url=f"https://image.tmdb.org/t/p/w500{movie_data['poster_path']}" if movie_data.get('poster_path') else None
+        )
+
+        ranking = db.session.query(Movie).count() + 1
+        new_movie.ranking = ranking
+        
+        db.session.add(new_movie)
+        db.session.commit()
+        
+        # Redirect to the edit page for the new movie
+        return redirect(url_for('update', id=new_movie.id))
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching movie details: {e}")
+        return redirect(url_for('add'))
 
 
 if __name__ == '__main__':
