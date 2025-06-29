@@ -1,0 +1,21 @@
+{% extends 'base.html' %} {% from 'bootstrap5/form.html' import render_form %}
+{% block title %}Edit Movies{% endblock %} {% block content %}
+<div class="content">
+  <h1 class="heading">{{ movie.title }} | {{ movie.year }}</h1>
+  <p class="description">{{ movie.description }}</p>
+ 
+  <form method="POST" action="{{ url_for('update', id=movie.id) }}" novalidate>
+    <h1 class="description">Edit Movie Rating and Review</h1>
+    {{ form.csrf_token }}
+    <div class="mb-3">
+      {{ form.rating.label(class="form-label") }}
+      {{ form.rating(class="form-control") }}
+    </div>
+    <div class="mb-3">
+      {{ form.review.label(class="form-label") }}
+      {{ form.review(class="form-control") }}
+    </div>
+    {{ form.submit(class="btn btn-primary") }}
+  </form>
+</div>
+{% endblock %}
