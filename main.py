@@ -1,10 +1,10 @@
-from flask import Flask, render_template, redirect, url_for, flash
+from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, String, Float, desc
 from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField
+from wtforms import StringField, FloatField, SubmitField
 from wtforms.validators import DataRequired
 import requests
 
@@ -30,13 +30,13 @@ db.init_app(app)
 
 class Movie(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    title: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
-    year: Mapped[int] = mapped_column(Integer, nullable=False)
-    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=True)
+    description: Mapped[str] = mapped_column(String(500), nullable=True)
     rating: Mapped[float] = mapped_column(Float, nullable=False)
     ranking: Mapped[int] = mapped_column(Integer, nullable=False)
     review: Mapped[str] = mapped_column(String(500), nullable=False)
-    img_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    img_url: Mapped[str] = mapped_column(String(500), nullable=True)
 
 with app.app_context():
     db.create_all()
@@ -52,7 +52,7 @@ def update_rankings():
     db.session.commit()
 
 class EditMovieForm(FlaskForm):
-    rating = StringField('Your Rating Out of 10', validators=[DataRequired()])
+    rating = FloatField('Your Rating Out of 10', validators=[DataRequired()])
     review = StringField('Your Review', validators=[DataRequired()])
     submit = SubmitField('Done')
 
@@ -62,9 +62,9 @@ class AddMovieForm(FlaskForm):
 
 @app.route("/")
 def home():
-    # Get movies ordered by ranking (ascending so the best is at the top)
-    all_movies = db.session.execute(db.select(Movie).order_by(Movie.ranking)).scalars()
-    return render_template("index.html", movies=all_movies)
+    page = request.args.get('page', 1, type=int)
+    movies = Movie.query.order_by(Movie.ranking).paginate(page=page, per_page=10)
+    return render_template("index.html", movies=movies)
 
 @app.route("/update/<int:id>", methods=["GET", "POST"])
 def update(id):
@@ -75,7 +75,7 @@ def update(id):
     form = EditMovieForm(obj=movie)
 
     if form.validate_on_submit():
-        movie.rating = float(form.rating.data)
+        movie.rating = form.rating.data
         movie.review = form.review.data
         db.session.commit()
         
@@ -89,6 +89,8 @@ def update(id):
 @app.route("/delete/<int:id>")
 def delete(id):
     movie = db.session.get(Movie, id)
+    if not movie:
+        return "Movie not found", 404
     db.session.delete(movie)
     db.session.commit()
     
@@ -106,13 +108,10 @@ def add():
             response = requests.get(
                 MOVIE_DB_SEARCH_URL,
                 headers=headers,
-                params={
-                    "query": title,
-                    "api_key": MOVIE_DB_API_KEY  # Adding API key as param too
-                },
-                timeout=10  # Add timeout to prevent hanging
+                params={"query": title},
+                timeout=5 
             )
-            response.raise_for_status()  # This will raise an HTTPError for bad responses
+            response.raise_for_status() 
             data = response.json().get("results", [])
             
             if not data:
@@ -140,11 +139,16 @@ def add_movie(movie_id):
         response = requests.get(
             MOVIE_DB_INFO_URL,
             headers=headers,
-            params={"api_key": MOVIE_DB_API_KEY},
-            timeout=10
+            # params={"api_key": MOVIE_DB_API_KEY},
+            timeout=5
         )
         response.raise_for_status()
         movie_data = response.json()
+
+        existing = db.session.execute(db.select(Movie).filter_by(title=movie_data["title"])).scalar()
+        if existing:
+            flash("This movie already exists in your list.", "info")
+            return redirect(url_for("home"))
         
         # Create new movie entry
         new_movie = Movie(
@@ -163,9 +167,20 @@ def add_movie(movie_id):
         return redirect(url_for('update', id=new_movie.id))
         
     except requests.exceptions.RequestException as e:
+        if isinstance(e, requests.exceptions.HTTPError):
+            if e.response is not None:
+                if e.response.status_code == 401:
+                    flash("Authentication failed - check your API key", "error")
+                elif e.response.status_code == 429:
+                    flash("Rate limit exceeded - please try again later", "error")
+                else:
+                    flash(f"HTTP error occurred: {e.response.status_code}", "error")
+        else:
+            flash("Failed to fetch movie details. Please try again.", "error")
+
         print(f"Error fetching movie details: {e}")
-        flash("Failed to fetch movie details. Please try again.", "error")
         return redirect(url_for('add'))
+
 
 if __name__ == '__main__':
     app.run(debug=True)

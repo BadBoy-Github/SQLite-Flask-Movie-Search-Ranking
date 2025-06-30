@@ -98,6 +98,7 @@
 	 transition: ease-in-out 600ms;
 }
  .front {
+	 background-color: #333;
 	 background-size: cover;
 	 padding: 2rem;
 	 font-size: 1.618rem;
@@ -212,3 +213,4 @@
  .release_date {
 	 font-weight: normal;
 }
+
