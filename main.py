@@ -10,7 +10,7 @@ import requests
 
 MOVIE_DB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjODlhMmYwNDhiZGNiZWM1NDUzM2Q4ZGQ3NjBlNTE4NiIsIm5iZiI6MTc1MTE5ODQ4OC4wMzcsInN1YiI6IjY4NjEyYjE4NWZjYTg0N2IzMDkxNWE1YSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.o2qbOQ5HW2YfQRpcJbyZuP34249YzmbrsYuJrft5_oI"
-MOVIE_DB_API_KEY = "c89a2f048bdcbec54533d8dd760e5186"
+# MOVIE_DB_API_KEY = "c89a2f048bdcbec54533d8dd760e5186a1p1i1"
 
 headers = {
     "Authorization": f"Bearer {ACCESS_TOKEN}",
@@ -151,7 +151,6 @@ def add_movie(movie_id):
         response = requests.get(
             MOVIE_DB_INFO_URL,
             headers=headers,
-            # params={"api_key": MOVIE_DB_API_KEY},
             timeout=5
         )
         response.raise_for_status()
