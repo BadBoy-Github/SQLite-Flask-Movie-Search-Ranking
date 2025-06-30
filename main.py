@@ -121,12 +121,24 @@ def add():
             
         except requests.exceptions.RequestException as e:
             print(f"Error fetching data: {e}")
-            error_msg = f"Failed to fetch movies: {str(e)}"
-            if isinstance(e, requests.exceptions.HTTPError):
-                if e.response.status_code == 401:
-                    error_msg = "Authentication failed - check your API key"
-                elif e.response.status_code == 429:
-                    error_msg = "Rate limit exceeded - please try again later"
+
+            if isinstance(e, requests.exceptions.ConnectionError):
+                error_msg = "Connection error. Please check your internet connection or try again later."
+            elif isinstance(e, requests.exceptions.Timeout):
+                error_msg = "The request timed out. Please try again later."
+            elif isinstance(e, requests.exceptions.HTTPError):
+                if e.response is not None:
+                    if e.response.status_code == 401:
+                        error_msg = "Authentication failed - check your API key."
+                    elif e.response.status_code == 429:
+                        error_msg = "Rate limit exceeded - please try again later."
+                    else:
+                        error_msg = f"HTTP error occurred: {e.response.status_code}"
+                else:
+                    error_msg = "HTTP error occurred."
+            else:
+                error_msg = "Failed to fetch movies. Please try again."
+
             return render_template("add.html", form=form, error=error_msg)
     
     return render_template("add.html", form=form)
